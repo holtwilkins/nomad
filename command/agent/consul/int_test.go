@@ -5,11 +5,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"runtime/debug"
 	"testing"
 	"time"
-
-	"golang.org/x/sys/unix"
 
 	consulapi "github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/testutil"
@@ -38,9 +35,6 @@ func TestConsul_Integration(t *testing.T) {
 	}
 	if testing.Short() {
 		t.Skip("-short set; skipping")
-	}
-	if unix.Geteuid() != 0 {
-		t.Skip("Must be run as root")
 	}
 	// Create an embedded Consul server
 	testconsul := testutil.NewTestServerConfig(t, func(c *testutil.TestServerConfig) {
@@ -85,7 +79,7 @@ func TestConsul_Integration(t *testing.T) {
 					Protocol:  "http",
 					PortLabel: "http",
 					Interval:  9000 * time.Hour,
-					Timeout:   10 * time.Second,
+					Timeout:   1 * time.Second,
 				},
 				{
 					Name:     "httpd-script-check",
@@ -105,7 +99,6 @@ func TestConsul_Integration(t *testing.T) {
 
 	logger := testLogger()
 	logUpdate := func(name, state string, event *structs.TaskEvent) {
-		debug.PrintStack()
 		logger.Printf("[TEST] updater: name=%q state=%q event=%v", name, state, event)
 	}
 	allocDir := allocdir.NewAllocDir(logger, filepath.Join(conf.AllocDir, alloc.ID))
@@ -136,9 +129,10 @@ func TestConsul_Integration(t *testing.T) {
 	// Block waiting for the service to appear
 	catalog := consulClient.Catalog()
 	res, meta, err := catalog.Service("httpd2", "test", nil)
-	if len(res) == 0 {
-		// Expected initial request to fail, do a blocking query
-		res, meta, err = catalog.Service("httpd2", "test", &consulapi.QueryOptions{WaitIndex: meta.LastIndex + 1, WaitTime: 10 * time.Second})
+	for len(res) == 0 {
+		//Expected initial request to fail, do a blocking query
+		logger.Printf("[TEST] test: waiting on query")
+		res, meta, err = catalog.Service("httpd2", "test", &consulapi.QueryOptions{WaitIndex: meta.LastIndex + 1, WaitTime: 3 * time.Second})
 		if err != nil {
 			t.Fatalf("error querying for service: %v", err)
 		}
@@ -146,19 +140,51 @@ func TestConsul_Integration(t *testing.T) {
 	if len(res) != 1 {
 		t.Fatalf("expected 1 service but found %d:\n%#v", len(res), res)
 	}
+	res = res[:]
 
 	// Assert the service with the checks exists
-	res, meta, err = catalog.Service("httpd", "http", &consulapi.QueryOptions{WaitIndex: meta.LastIndex + 1, WaitTime: 10 * time.Second})
-	if err != nil {
-		t.Fatalf("error querying for service: %v", err)
+	for len(res) == 0 {
+		res, meta, err = catalog.Service("httpd", "http", &consulapi.QueryOptions{WaitIndex: meta.LastIndex + 1, WaitTime: 3 * time.Second})
+		if err != nil {
+			t.Fatalf("error querying for service: %v", err)
+		}
 	}
 	if len(res) != 1 {
 		t.Fatalf("exepcted 1 service but found %d:\n%#v", len(res), res)
 	}
 
 	// Assert the script check passes (mock_driver script checks always pass)
-	checks, meta, err := consulClient.Health().Check("httpd", &consulapi.QueryOptions{WaitIndex: meta.LastIndex + 1, WaitTime: 10 * time.Second})
-	panic("TODO")
+	var checks consulapi.HealthChecks
+	for i := 0; i < 100 && len(checks) < 2; i++ {
+		checks, meta, err = consulClient.Health().Checks("httpd", &consulapi.QueryOptions{WaitIndex: meta.LastIndex + 1, WaitTime: 3 * time.Second})
+		if err != nil {
+			t.Fatalf("error querying checks: %v", err)
+		}
+	}
+	if expected := 2; len(checks) != expected {
+		t.Fatalf("expected %d checks but found %d:\n%#v", expected, len(checks), checks)
+	}
+	for _, check := range checks {
+		if expected := "httpd"; check.ServiceName != expected {
+			t.Fatalf("expected checks to be for %q but found service name = %q", expected, check.ServiceName)
+		}
+		switch check.Name {
+		case "httpd-http-check":
+			// Port check should fail
+			if expected := consulapi.HealthCritical; check.Status != expected {
+				t.Errorf("expected %q status to be %q but found %q", check.Name, expected, check.Status)
+			}
+		case "httpd-script-check":
+			// mock_driver script checks always succeed
+			if expected := consulapi.HealthPassing; check.Status != expected {
+				t.Errorf("expected %q status to be %q but found %q", check.Name, expected, check.Status)
+			}
+		default:
+			t.Errorf("unexpected check %q with status %q", check.Name, check.Status)
+		}
+	}
+
+	logger.Printf("[TEST] killing task")
 
 	// Kill the task
 	tr.Kill("", "", false)
