@@ -17,6 +17,14 @@ type TLSConfig struct {
 	// existing clients.
 	VerifyServerHostname bool `mapstructure:"verify_server_hostname"`
 
+	// VerifyIncoming is used to enable hostname verification of inbound connections.
+	// Enabling VerifyServerHostname implies this option.
+	VerifyIncoming bool `mapstructure:"verify_incoming"`
+
+	// VerifyOutgoing is used to enable hostname verification of outbound connections.
+	// Enabling VerifyServerHostname implies this option.
+	VerifyOutgoing bool `mapstructure:"verify_outgoing"`
+
 	// CAFile is a path to a certificate authority file. This is used with VerifyIncoming
 	// or VerifyOutgoing to verify the TLS connection.
 	CAFile string `mapstructure:"ca_file"`
@@ -42,6 +50,12 @@ func (t *TLSConfig) Merge(b *TLSConfig) *TLSConfig {
 	}
 	if b.VerifyServerHostname {
 		result.VerifyServerHostname = true
+	}
+	if b.VerifyIncoming {
+		result.VerifyIncoming = true
+	}
+	if b.VerifyOutgoing {
+		result.VerifyOutgoing = true
 	}
 	if b.CAFile != "" {
 		result.CAFile = b.CAFile

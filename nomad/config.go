@@ -276,10 +276,21 @@ func DefaultConfig() *Config {
 
 // tlsConfig returns a TLSUtil Config based on the server configuration
 func (c *Config) tlsConfig() *tlsutil.Config {
+	var verifyIncoming bool
+	var verifyOutgoing bool
+
+	if c.TLSConfig.VerifyServerHostname {
+		verifyIncoming = true
+		verifyOutgoing = true
+	} else {
+		verifyIncoming = c.TLSConfig.VerifyIncoming
+		verifyOutgoing = c.TLSConfig.VerifyOutgoing
+	}
+
 	tlsConf := &tlsutil.Config{
-		VerifyIncoming:       true,
-		VerifyOutgoing:       true,
 		VerifyServerHostname: c.TLSConfig.VerifyServerHostname,
+		VerifyIncoming:       verifyIncoming,
+		VerifyOutgoing:       verifyOutgoing,
 		CAFile:               c.TLSConfig.CAFile,
 		CertFile:             c.TLSConfig.CertFile,
 		KeyFile:              c.TLSConfig.KeyFile,

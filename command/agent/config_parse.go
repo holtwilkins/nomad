@@ -686,6 +686,8 @@ func parseTLSConfig(result **config.TLSConfig, list *ast.ObjectList) error {
 		"http",
 		"rpc",
 		"verify_server_hostname",
+		"verify_incoming",
+		"verify_outgoing",
 		"ca_file",
 		"cert_file",
 		"key_file",

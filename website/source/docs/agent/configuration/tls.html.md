@@ -54,7 +54,13 @@ the [Agent's Gossip and RPC Encryption](/docs/agent/encryption.html).
   a Nomad client makes the client use TLS for making RPC requests to the Nomad
   servers.
 
-- `verify_server_hostname` `(bool: false)` - Specifies if outgoing TLS
+- `verify_server_hostname` `(bool: false)` - Specifies if TLS
+  connections should verify the server's hostname.  Implies `verify_outgoing` and `verify_incoming`.
+
+- `verify_incoming` `(bool: false)` - Specifies if inbound TLS
+  connections should verify the server's hostname.
+
+- `verify_outbound` `(bool: false)` - Specifies if outbound TLS
   connections should verify the server's hostname.
 
 ## `tls` Examples
